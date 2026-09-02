@@ -75,3 +75,13 @@ uint32_t des_feistel_f(uint32_t half_block, uint64_t round_key)
     return (uint32_t)permute((uint64_t)substituted, DES_P,
                              DES_HALF_BLOCK_BITS, DES_HALF_BLOCK_BITS);
 }
+
+des_half_pair_t des_round(uint32_t left, uint32_t right, uint64_t round_key)
+{
+    des_half_pair_t next;
+
+    next.left  = right;
+    next.right = left ^ des_feistel_f(right, round_key);
+
+    return next;
+}

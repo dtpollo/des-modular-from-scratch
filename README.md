@@ -29,15 +29,19 @@ A few choices in this codebase exist specifically to avoid classes of bugs that 
 include/
   des_tables.h         table declarations (IP, IP⁻¹, E, P, PC-1, PC-2, SHIFTS, SBOX)
   des_keyschedule.h    key schedule declaration
-  des_feistel.h        Feistel round function declaration
-  des.h                public API: des_encrypt_block / des_decrypt_block
+  des_feistel.h        Feistel function (f) and one full round (des_round)
+  des.h                raw 64-bit block primitive: des_encrypt_block / des_decrypt_block
+  des_api.h            byte-buffer public API: des_encrypt / des_decrypt / des_key_schedule / des_check_parity
   des_modes.h          reserved for block cipher modes (empty for now)
 src/
   des_tables.c         table definitions, no logic
   des_keyschedule.c    PC-1 -> rotations -> PC-2
   des_feistel.c        E -> XOR -> S-boxes -> P
   des.c                IP -> 16 Feistel rounds -> IP⁻¹ (the actual cipher)
+  des_api.c            byte <-> uint64_t conversion, length validation, parity check
   des_modes.c          placeholder, excluded from the build
+tests/
+  test_des.c           known vector, key schedule, round trip, avalanche, invalid input, bit order
 examples/
   main.c               encrypts and decrypts a sample text
 Makefile
@@ -48,6 +52,7 @@ Makefile
 Requires a C11 compiler (GCC or Clang) and `make`. No dependencies.
 
 ```bash
+make test              # builds and runs the full test suite
 make examples          # builds the core + the demo program
 ./build/bin/des_demo   # runs it with a default sample text
 ```
@@ -64,7 +69,7 @@ Note: the demo encrypts each block independently in a loop. That pattern has a n
 
 ## Using the API
 
-The public surface is two functions operating on a single 64-bit block at a time:
+There are two layers. `des.h` is the raw primitive: it trusts its caller completely and always operates on exactly one 64-bit block.
 
 ```c
 #include "des.h"
@@ -73,41 +78,68 @@ uint64_t des_encrypt_block(uint64_t block, uint64_t key);
 uint64_t des_decrypt_block(uint64_t block, uint64_t key);
 ```
 
+`des_api.h` is the layer meant for actual callers: it works on byte buffers and validates their length instead of assuming the caller got it right.
+
 ```c
-#include <inttypes.h>
+#include "des_api.h"
+
+des_status_t des_encrypt(const uint8_t *key, size_t key_len,
+                         const uint8_t *plaintext, size_t plaintext_len,
+                         uint8_t out[DES_BLOCK_BYTES]);
+
+des_status_t des_decrypt(const uint8_t *key, size_t key_len,
+                         const uint8_t *ciphertext, size_t ciphertext_len,
+                         uint8_t out[DES_BLOCK_BYTES]);
+
+des_status_t des_key_schedule(const uint8_t *key, size_t key_len,
+                              uint64_t round_keys[static DES_ROUNDS]);
+
+des_status_t des_check_parity(const uint8_t *key, size_t key_len, bool *is_valid);
+```
+
+Every one of these returns `DES_ERR_INVALID_LENGTH` instead of guessing if `key_len` or the block length isn't exactly 8 — there's no silent truncation or out-of-bounds read on a short buffer.
+
+```c
 #include <stdio.h>
-#include "des.h"
+#include "des_api.h"
 
 int main(void)
 {
-    const uint64_t key   = UINT64_C(0x133457799BBCDFF1);
-    const uint64_t plain = UINT64_C(0x0123456789ABCDEF);
+    const uint8_t key[DES_KEY_BYTES]     = { 0x13,0x34,0x57,0x79,0x9B,0xBC,0xDF,0xF1 };
+    const uint8_t plain[DES_BLOCK_BYTES] = { 0x01,0x23,0x45,0x67,0x89,0xAB,0xCD,0xEF };
+    uint8_t cipher[DES_BLOCK_BYTES];
 
-    const uint64_t cipher    = des_encrypt_block(plain, key);
-    const uint64_t recovered = des_decrypt_block(cipher, key);
+    if (des_encrypt(key, DES_KEY_BYTES, plain, DES_BLOCK_BYTES, cipher) != DES_OK) {
+        fprintf(stderr, "bad input length\n");
+        return 1;
+    }
 
-    printf("cipher:    %016" PRIX64 "\n", cipher);     /* 85E813540F0AB405 */
-    printf("recovered: %016" PRIX64 "\n", recovered);  /* 0123456789ABCDEF */
+    for (int i = 0; i < DES_BLOCK_BYTES; ++i) printf("%02X", cipher[i]);
+    putchar('\n'); /* 85E813540F0AB405 */
 
     return 0;
 }
 ```
 
-Compile it directly against the core sources:
+Compile against the core sources:
 
 ```bash
 cc -std=c11 -Iinclude my_program.c src/des_tables.c src/des_keyschedule.c \
-   src/des_feistel.c src/des.c -o my_program
+   src/des_feistel.c src/des.c src/des_api.c -o my_program
 ```
 
-Both functions are "pure" (same input always gives the same output, no hidden state) and "reentrant" (no shared/global variables), so they're safe to call from multiple threads at once without any locking.
+All of these functions are "pure" (same input always gives the same output, no hidden state) and "reentrant" (no shared/global variables), so they're safe to call from multiple threads at once without any locking.
+
+### `des_check_parity`
+
+Each byte of a DES key carries 7 data bits and 1 parity bit (DES itself ignores that bit — see PC-1 in `des_tables.c`). The convention is *odd parity*: every byte's 8 bits, including the parity bit, should contain an odd number of 1s. `des_check_parity` reports whether a key follows that convention; it's a legacy sanity check inherited from old hardware, not something that affects security.
 
 ## Known limitations
 
 - **Not constant-time.** How long the S-box lookups take can vary very slightly depending on the actual bit values involved. In theory, someone who can precisely measure how long encryption takes (a "timing side channel") could use that to guess bits of the key. This implementation makes no attempt to prevent that.
 - No detection of "weak" or "semi-weak" keys — a handful of specific DES keys are known to behave in unusually predictable ways.
 - No Triple DES (running DES three times with different keys, the historical fix for DES's short key length).
-- Operates on single 64-bit blocks only — there's no higher-level function yet that takes an arbitrary-length message (a string, a file) and handles splitting it into blocks and padding the last one correctly.
+- Operates on a single block per call — there's no higher-level function yet that takes an arbitrary-length message (a string, a file) and handles splitting it into blocks and padding the last one correctly. That's what block cipher modes (`des_modes.h`) will add.
 
 These are acceptable for a project whose goal is to show how DES works internally, and they're listed here instead of left for someone to discover the hard way.
 

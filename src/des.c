@@ -76,11 +76,9 @@ static uint64_t des_process_block(uint64_t block,
                              ? (DES_ROUNDS - 1 - round)
                              : round;
 
-        const uint32_t previous_right = right;
-
-        /* R_i = L_{i-1} XOR f(R_{i-1}, K_i);  L_i = R_{i-1} */
-        right = left ^ des_feistel_f(right, round_keys[index]);
-        left  = previous_right;
+        const des_half_pair_t next = des_round(left, right, round_keys[index]);
+        left  = next.left;
+        right = next.right;
     }
 
     /* Final swap: output is R16 || L16, not L16 || R16. This swap is what

@@ -1,5 +1,6 @@
-/* The Feistel round function f(R, K). Knows nothing about how subkeys are
- * derived -- it just takes one as a plain 48-bit value. */
+/* The Feistel round function f(R, K) and one full round built on top of it.
+ * Neither knows how subkeys are derived -- a round_key just arrives as a
+ * plain 48-bit value. */
 
 #ifndef DES_FEISTEL_H
 #define DES_FEISTEL_H
@@ -20,6 +21,23 @@ extern "C" {
  * Returns the 32 bits to XOR into the other half of the block.
  */
 uint32_t des_feistel_f(uint32_t half_block, uint64_t round_key);
+
+/* The two halves after one Feistel round, returned together since C has no
+ * multiple return values. */
+typedef struct {
+    uint32_t left;
+    uint32_t right;
+} des_half_pair_t;
+
+/*
+ * One full Feistel round:
+ *   left'  = right
+ *   right' = left XOR f(right, round_key)
+ *
+ * Kept independent of des.c's 16-round loop and of IP/IP_INV, so it can be
+ * tested (and reasoned about) on its own.
+ */
+des_half_pair_t des_round(uint32_t left, uint32_t right, uint64_t round_key);
 
 #ifdef __cplusplus
 } /* extern "C" */
