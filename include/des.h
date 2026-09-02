@@ -1,20 +1,16 @@
 /*
- * des.h - API publica de la primitiva de bloque DES.
+ * Public API for the DES block cipher.
  *
- * ADVERTENCIA DE SEGURIDAD
- * ------------------------
- * DES esta criptograficamente roto: su clave efectiva de 56 bits es
- * vulnerable a busqueda exhaustiva con hardware moderno. Este codigo existe
- * con fines educativos y de referencia. Para software real usa AES-GCM,
- * ChaCha20-Poly1305 o una biblioteca auditada como libsodium u OpenSSL.
+ * WARNING: DES is broken today. Its 56-bit effective key falls to brute
+ * force on modern hardware; NIST withdrew it in 2005. Educational use only
+ * -- for real encryption use AES-GCM or ChaCha20-Poly1305 through an
+ * audited library (libsodium, OpenSSL).
  *
- * ALCANCE
- * -------
- * Esta cabecera cubre unicamente la transformacion de UN bloque de 64 bits.
- * No hay padding, ni IV, ni encadenamiento: eso pertenece a los modos de
- * operacion (ver des_modes.h). Un bloque aislado cifrado con esta API es,
- * por definicion, ECB de un solo bloque; encadenar varios bloques asi filtra
- * patrones del texto claro y no debe hacerse.
+ * This header covers only ONE 64-bit block: no padding, no IV, no chaining.
+ * That's the job of block cipher modes (see des_modes.h), not this file.
+ * Encrypting several blocks back to back with just this API is, by
+ * definition, ECB mode -- it leaks patterns in the plaintext and shouldn't
+ * be used that way for real data.
  */
 
 #ifndef DES_H
@@ -29,27 +25,22 @@ extern "C" {
 #endif
 
 /*
- * Cifra un unico bloque de 64 bits.
+ * Encrypts one 64-bit block.
  *
- * block  Texto claro como entero de 64 bits, big-endian conceptual: el bit 1
- *        del estandar es el bit mas significativo de este valor.
- * key    Clave de 64 bits; los 8 bits de paridad se ignoran (ver
- *        des_generate_round_keys).
+ * block  Plaintext as a 64-bit integer; bit 1 of the spec is this value's
+ *        most significant bit.
+ * key    64-bit key; the 8 parity bits are ignored.
  *
- * Devuelve el bloque cifrado. La funcion es pura y reentrante: no mantiene
- * estado global, por lo que puede llamarse desde varios hilos a la vez.
+ * Pure and reentrant: no global state, safe to call from multiple threads.
  */
 uint64_t des_encrypt_block(uint64_t block, uint64_t key);
 
 /*
- * Descifra un unico bloque de 64 bits.
+ * Decrypts one 64-bit block. Runs the exact same Feistel network as
+ * des_encrypt_block, just with subkeys applied in reverse order (K16..K1
+ * instead of K1..K16).
  *
- * Usa exactamente la misma red de Feistel que des_encrypt_block, pero aplica
- * las subclaves en orden inverso (K16..K1). Esa simetria es la propiedad
- * central de una red de Feistel: la funcion f no necesita ser invertible.
- *
- * Se cumple para todo par (block, key):
- *     des_decrypt_block(des_encrypt_block(block, key), key) == block
+ * Always true: des_decrypt_block(des_encrypt_block(block, key), key) == block
  */
 uint64_t des_decrypt_block(uint64_t block, uint64_t key);
 

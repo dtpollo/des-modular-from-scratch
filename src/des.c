@@ -1,20 +1,17 @@
 /*
- * des.c - Primitiva de bloque DES: IP -> 16 rondas de Feistel -> IP^-1.
+ * The DES block cipher: IP -> 16 Feistel rounds -> IP^-1.
  *
- * Este archivo contiene EXCLUSIVAMENTE la transformacion de un bloque de 64
- * bits. No incluye des_modes.h ni conoce padding, IV o encadenamiento: la
- * dependencia entre capas va en un solo sentido (modos -> primitiva), de modo
- * que ECB, CBC o cualquier otro modo podran anadirse sin tocar este nucleo.
- *
- * Estructura de la red de Feistel, para cada ronda i:
- *
+ * Each round:
  *     L_i = R_{i-1}
  *     R_i = L_{i-1} XOR f(R_{i-1}, K_i)
  *
- * La propiedad clave es que f NO necesita ser invertible: para deshacer una
- * ronda basta con conocer K_i, porque L_{i-1} = R_i XOR f(L_i, K_i). De ahi
- * que cifrar y descifrar compartan exactamente el mismo codigo y solo difieran
- * en el orden en que se consumen las subclaves.
+ * f() doesn't need to be reversible: undoing a round only needs K_i, since
+ * L_{i-1} = R_i XOR f(L_i, K_i). That's the whole reason encrypt and
+ * decrypt below share the same code, just with subkeys applied in reverse
+ * order.
+ *
+ * This file never includes des_modes.h -- no padding, IV, or chaining here,
+ * only the raw 64-bit block transform.
  */
 
 #include "des.h"
@@ -26,20 +23,18 @@
 #include "des_keyschedule.h"
 #include "des_tables.h"
 
-/* Mascara de 32 bits usada para extraer la mitad derecha del bloque. */
 #define DES_HALF_MASK UINT64_C(0xFFFFFFFF)
 
-/* Direccion en la que se recorren las subclaves. */
+/* Which way to walk the subkeys. */
 typedef enum {
-    DES_KEY_ORDER_FORWARD = 0, /* K1..K16: cifrado.    */
-    DES_KEY_ORDER_REVERSE = 1  /* K16..K1: descifrado. */
+    DES_KEY_ORDER_FORWARD = 0, /* K1..K16: encrypt */
+    DES_KEY_ORDER_REVERSE = 1  /* K16..K1: decrypt */
 } des_key_order_t;
 
-/*
- * El estandar numera los bits desde 1 empezando por el MAS significativo, de
- * ahi el desplazamiento (in_bits - table[i]).
- */
-static uint64_t permute(uint64_t input, const uint8_t *table, unsigned out_bits, unsigned in_bits)
+/* Same permute() used across the codebase: picks bits from `input` per
+ * `table`. The spec numbers bits from 1, MSB first. */
+static uint64_t permute(uint64_t input, const uint8_t *table,
+                        unsigned out_bits, unsigned in_bits)
 {
     uint64_t output = 0;
 
@@ -52,13 +47,10 @@ static uint64_t permute(uint64_t input, const uint8_t *table, unsigned out_bits,
 }
 
 /*
- * Borra material sensible de la pila.
- *
- * Un memset normal puede ser eliminado por el compilador cuando demuestra que
- * el buffer no se vuelve a leer ("dead store elimination"). Escribir a traves
- * de un puntero a volatile impide esa optimizacion. No es una defensa
- * completa (los valores pueden haber quedado en registros o en swap), pero es
- * la higiene minima esperable en codigo criptografico.
+ * Zeroes memory through a volatile pointer instead of plain memset.
+ * A compiler is allowed to delete a memset it can prove is never read
+ * again ("dead store elimination") -- writing through volatile stops that,
+ * so key material doesn't linger in memory longer than needed.
  */
 static void secure_zero(void *buffer, size_t length)
 {
@@ -69,18 +61,11 @@ static void secure_zero(void *buffer, size_t length)
     }
 }
 
-/*
- * Nucleo compartido por cifrado y descifrado.
- *
- * block       Bloque de 64 bits de entrada.
- * round_keys  Las 16 subclaves ya derivadas.
- * order       Sentido en el que se aplican.
- */
-static uint64_t des_process_block(uint64_t block, const uint64_t round_keys[static DES_ROUNDS], des_key_order_t order)
+/* Shared core for both encrypt and decrypt; only `order` differs. */
+static uint64_t des_process_block(uint64_t block,
+                                  const uint64_t round_keys[static DES_ROUNDS],
+                                  des_key_order_t order)
 {
-    /* Permutacion inicial. Historicamente servia para simplificar el cableado
-     * de los buses de 8 bits del hardware original; criptograficamente es
-     * irrelevante, pero omitirla rompe la interoperabilidad. */
     const uint64_t permuted = permute(block, DES_IP, DES_BLOCK_BITS, DES_BLOCK_BITS);
 
     uint32_t left  = (uint32_t)(permuted >> DES_HALF_BLOCK_BITS);
@@ -98,18 +83,15 @@ static uint64_t des_process_block(uint64_t block, const uint64_t round_keys[stat
         left  = previous_right;
     }
 
-    /* Intercambio final: el preoutput se forma como R16 || L16, no L16 || R16.
-     * Este "swap" es lo que hace que la red sea simetrica y que descifrar sea
-     * el mismo procedimiento con las subclaves invertidas. */
-    const uint64_t preoutput = ((uint64_t)right << DES_HALF_BLOCK_BITS) | (uint64_t)left;
+    /* Final swap: output is R16 || L16, not L16 || R16. This swap is what
+     * makes the network symmetric between encrypt and decrypt. */
+    const uint64_t preoutput = ((uint64_t)right << DES_HALF_BLOCK_BITS)
+                             | (uint64_t)left;
 
     return permute(preoutput, DES_IP_INV, DES_BLOCK_BITS, DES_BLOCK_BITS);
 }
 
-/*
- * Fachada comun: deriva las subclaves, procesa el bloque y limpia el material
- * de clave antes de devolver el control.
- */
+/* Derives the subkeys, runs the block through, wipes the subkeys. */
 static uint64_t des_run(uint64_t block, uint64_t key, des_key_order_t order)
 {
     uint64_t round_keys[DES_ROUNDS];

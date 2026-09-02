@@ -1,12 +1,5 @@
-/*
- * des_feistel.h - Funcion de ronda f(R, K) de DES.
- *
- * Este modulo NO conoce el key schedule: recibe la subclave ya derivada como
- * un simple valor de 48 bits. Esa frontera es intencional. La funcion f es una
- * transformacion pura (mismos argumentos -> mismo resultado, sin estado ni
- * efectos secundarios), lo que la hace trivial de testear y reutilizable por
- * cualquier variante que quiera alimentarla con subclaves de otro origen.
- */
+/* The Feistel round function f(R, K). Knows nothing about how subkeys are
+ * derived -- it just takes one as a plain 48-bit value. */
 
 #ifndef DES_FEISTEL_H
 #define DES_FEISTEL_H
@@ -18,20 +11,13 @@ extern "C" {
 #endif
 
 /*
- * Calcula f(half_block, round_key), el nucleo no lineal de cada ronda.
+ * f(half_block, round_key):
+ *   1. Expand E:      32 -> 48 bits.
+ *   2. XOR with round_key (the only place the key enters the cipher).
+ *   3. Substitute:    8 S-boxes, 48 -> 32 bits.
+ *   4. Permute P:     spreads the result for the next round.
  *
- * Encadena las cuatro etapas definidas por el estandar:
- *   1. Expansion E:  32 -> 48 bits.
- *   2. XOR con la subclave de ronda (unico punto donde entra la clave).
- *   3. Sustitucion:  8 S-boxes, 48 -> 32 bits.
- *   4. Permutacion P: difusion de los bits resultantes.
- *
- * half_block  Mitad derecha R de 32 bits.
- * round_key   Subclave de 48 bits alineada a la derecha; los 16 bits altos se
- *             ignoran, de modo que un valor mal formado no corrompe el
- *             resultado de la expansion.
- *
- * Devuelve los 32 bits que se combinaran con XOR contra la mitad izquierda.
+ * Returns the 32 bits to XOR into the other half of the block.
  */
 uint32_t des_feistel_f(uint32_t half_block, uint64_t round_key);
 

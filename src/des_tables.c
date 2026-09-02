@@ -1,18 +1,8 @@
-/*
- * des_tables.c - Valores oficiales de las tablas de DES (FIPS 46-3).
- *
- * Modulo de datos puros: aqui no hay ni una linea de logica, a proposito.
- * Todas las tablas se transcriben con la numeracion 1-based del estandar (el
- * bit 1 es el mas significativo) para poder cotejarlas visualmente contra el
- * documento oficial sin traducir indices mentalmente. La conversion a
- * desplazamientos de bit ocurre en los modulos que las consumen.
- */
+/* DES table values, transcribed from FIPS 46-3. No logic here on purpose. */
 
 #include "des_tables.h"
 
-/* --------------------------------------------------------------------------
- * Permutacion inicial (IP), tabla 1 de FIPS 46-3.
- * -------------------------------------------------------------------------- */
+/* Initial permutation (IP). */
 const uint8_t DES_IP[DES_BLOCK_BITS] = {
     58, 50, 42, 34, 26, 18, 10,  2,
     60, 52, 44, 36, 28, 20, 12,  4,
@@ -24,9 +14,7 @@ const uint8_t DES_IP[DES_BLOCK_BITS] = {
     63, 55, 47, 39, 31, 23, 15,  7
 };
 
-/* --------------------------------------------------------------------------
- * Permutacion final (IP^-1). Inversa exacta de DES_IP
- * -------------------------------------------------------------------------- */
+/* Final permutation (IP^-1), the exact inverse of IP. */
 const uint8_t DES_IP_INV[DES_BLOCK_BITS] = {
     40,  8, 48, 16, 56, 24, 64, 32,
     39,  7, 47, 15, 55, 23, 63, 31,
@@ -38,9 +26,7 @@ const uint8_t DES_IP_INV[DES_BLOCK_BITS] = {
     33,  1, 41,  9, 49, 17, 57, 25
 };
 
-/* --------------------------------------------------------------------------
- * Expansion E: 32 -> 48 bits.
- * -------------------------------------------------------------------------- */
+/* Expansion E: 32 -> 48 bits. */
 const uint8_t DES_E[DES_SUBKEY_BITS] = {
     32,  1,  2,  3,  4,  5,
      4,  5,  6,  7,  8,  9,
@@ -52,9 +38,7 @@ const uint8_t DES_E[DES_SUBKEY_BITS] = {
     28, 29, 30, 31, 32,  1
 };
 
-/* --------------------------------------------------------------------------
- * Permutacion P: 32 -> 32 bits, aplicada a la salida de las S-boxes.
- * -------------------------------------------------------------------------- */
+/* Permutation P, applied after the S-boxes. */
 const uint8_t DES_P[DES_HALF_BLOCK_BITS] = {
     16,  7, 20, 21,
     29, 12, 28, 17,
@@ -66,11 +50,8 @@ const uint8_t DES_P[DES_HALF_BLOCK_BITS] = {
     22, 11,  4, 25
 };
 
-/* --------------------------------------------------------------------------
- * PC-1: 64 -> 56 bits.
- * Ningun multiplo de 8 aparece en la tabla (bits de paridad).
- * Las primeras 28 entradas forman C0 y las ultimas 28 forman D0.
- * -------------------------------------------------------------------------- */
+/* PC-1: 64 -> 56 bits. No multiple of 8 appears here -- those are the 8
+ * parity bits, dropped. First 28 entries form C0, last 28 form D0. */
 const uint8_t DES_PC1[DES_KEY_BITS_EFFECTIVE] = {
     /* C0 */
     57, 49, 41, 33, 25, 17,  9,
@@ -84,10 +65,7 @@ const uint8_t DES_PC1[DES_KEY_BITS_EFFECTIVE] = {
     21, 13,  5, 28, 20, 12,  4
 };
 
-/* --------------------------------------------------------------------------
- * PC-2: 56 -> 48 bits.
- * Comprime C_i || D_i descartando 8 bits (9, 18, 22, 25, 35, 38, 43 y 54).
- * -------------------------------------------------------------------------- */
+/* PC-2: 56 -> 48 bits. Drops 8 bits, compresses C_i || D_i into a subkey. */
 const uint8_t DES_PC2[DES_SUBKEY_BITS] = {
     14, 17, 11, 24,  1,  5,
      3, 28, 15,  6, 21, 10,
@@ -99,24 +77,16 @@ const uint8_t DES_PC2[DES_SUBKEY_BITS] = {
     46, 42, 50, 36, 29, 32
 };
 
-/* --------------------------------------------------------------------------
- * Rotaciones izquierdas por ronda aplicadas a C y D.
- * La suma es exactamente 28 (los bits de cada registro), asi que tras la
- * ronda 16 ambos registros han dado una vuelta completa y valen lo mismo que
- * al inicio. Esa propiedad permite generar las subclaves una sola vez y
- * recorrerlas al reves para descifrar.
- * -------------------------------------------------------------------------- */
+/* Left rotations per round for C and D. Sum = 28, so after round 16 both
+ * registers cycle back to where they started -- the same subkeys work for
+ * both encryption and decryption. */
 const uint8_t DES_SHIFTS[DES_ROUNDS] = {
     1, 1, 2, 2, 2, 2, 2, 2,
     1, 2, 2, 2, 2, 2, 2, 1
 };
 
-/* --------------------------------------------------------------------------
- * Las 8 S-boxes: el unico componente no lineal de DES y la razon de que el
- * algoritmo resista criptoanalisis diferencial. Cada caja mapea 6 bits a 4.
- * El indexado es [caja][fila][columna]; como se calculan fila y columna se
- * documenta en des_feistel.c, que es donde se usan.
- * -------------------------------------------------------------------------- */
+/* The 8 S-boxes: DES's only non-linear step, indexed [box][row][col].
+ * Row/column selection is explained in des_feistel.c, where they're used. */
 const uint8_t DES_SBOX[DES_SBOX_COUNT][DES_SBOX_ROWS][DES_SBOX_COLS] = {
     /* S1 */
     {
