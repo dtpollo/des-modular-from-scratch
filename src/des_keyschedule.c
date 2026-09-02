@@ -14,8 +14,7 @@
 
 /* Picks bits from `input` according to `table` and reassembles them.
  * The spec numbers bits from 1, MSB first, hence (in_bits - table[i]). */
-static uint64_t permute(uint64_t input, const uint8_t *table,
-                        unsigned out_bits, unsigned in_bits)
+static uint64_t permute(uint64_t input, const uint8_t *table, unsigned out_bits, unsigned in_bits)
 {
     uint64_t output = 0;
 
@@ -47,8 +46,7 @@ static uint32_t rotate_left_28(uint32_t half, unsigned amount)
 void des_generate_round_keys(uint64_t key, uint64_t round_keys[static DES_ROUNDS])
 {
     /* PC-1 drops the 8 parity bits, leaving 56. */
-    const uint64_t permuted_key = permute(key, DES_PC1,
-                                          DES_KEY_BITS_EFFECTIVE, DES_KEY_BITS);
+    const uint64_t permuted_key = permute(key, DES_PC1, DES_KEY_BITS_EFFECTIVE, DES_KEY_BITS);
 
     const uint32_t half_mask = (UINT32_C(1) << DES_KEY_HALF_BITS) - 1;
 
@@ -64,7 +62,6 @@ void des_generate_round_keys(uint64_t key, uint64_t round_keys[static DES_ROUNDS
         /* PC-2 treats C_i || D_i as a single 56-bit value. */
         const uint64_t combined = ((uint64_t)c << DES_KEY_HALF_BITS) | (uint64_t)d;
 
-        round_keys[round] = permute(combined, DES_PC2,
-                                    DES_SUBKEY_BITS, DES_KEY_BITS_EFFECTIVE);
+        round_keys[round] = permute(combined, DES_PC2, DES_SUBKEY_BITS, DES_KEY_BITS_EFFECTIVE);
     }
 }

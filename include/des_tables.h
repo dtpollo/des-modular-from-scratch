@@ -23,9 +23,6 @@ extern "C" {
 #define DES_SBOX_ROWS  4
 #define DES_SBOX_COLS  16
 
-/* Note: the spec numbers bits from 1, MSB first. Tables below use that same
- * numbering (not 0-based C indexing) so they can be checked by eye against
- * FIPS 46-3. The conversion to a bit-shift happens in permute(). */
 
 /* Initial permutation, applied before round 1. */
 extern const uint8_t DES_IP[DES_BLOCK_BITS];

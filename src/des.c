@@ -62,9 +62,7 @@ static void secure_zero(void *buffer, size_t length)
 }
 
 /* Shared core for both encrypt and decrypt; only `order` differs. */
-static uint64_t des_process_block(uint64_t block,
-                                  const uint64_t round_keys[static DES_ROUNDS],
-                                  des_key_order_t order)
+static uint64_t des_process_block(uint64_t block, const uint64_t round_keys[static DES_ROUNDS], des_key_order_t order)
 {
     const uint64_t permuted = permute(block, DES_IP, DES_BLOCK_BITS, DES_BLOCK_BITS);
 

@@ -13,8 +13,7 @@
 
 /* Same permute() used across the codebase: picks bits from `input` per
  * `table`. The spec numbers bits from 1, MSB first. */
-static uint64_t permute(uint64_t input, const uint8_t *table,
-                        unsigned out_bits, unsigned in_bits)
+static uint64_t permute(uint64_t input, const uint8_t *table, unsigned out_bits, unsigned in_bits)
 {
     uint64_t output = 0;
 
@@ -46,8 +45,9 @@ static uint32_t substitute(uint64_t expanded)
 
     for (unsigned box = 0; box < DES_SBOX_COUNT; ++box) {
         /* Chunks are read left to right: box 0 gets the top 6 bits of 48. */
-        const unsigned shift = DES_SUBKEY_BITS - DES_SBOX_INPUT_BITS
-                             - (box * DES_SBOX_INPUT_BITS);
+        const unsigned shift = DES_SUBKEY_BITS - DES_SBOX_INPUT_BITS - (box * DES_SBOX_INPUT_BITS);
+
+        /* Save low 6 bits*/
         const uint8_t chunk = (uint8_t)((expanded >> shift) & 0x3Fu);
 
         const unsigned row = (unsigned)(((chunk & 0x20u) >> 4) | (chunk & 0x01u));
@@ -62,8 +62,7 @@ static uint32_t substitute(uint64_t expanded)
 uint32_t des_feistel_f(uint32_t half_block, uint64_t round_key)
 {
     /* 1. Expand 32 -> 48 bits. */
-    const uint64_t expanded = permute((uint64_t)half_block, DES_E,
-                                      DES_SUBKEY_BITS, DES_HALF_BLOCK_BITS);
+    const uint64_t expanded = permute((uint64_t)half_block, DES_E, DES_SUBKEY_BITS, DES_HALF_BLOCK_BITS);
 
     /* 2. Mix in the key -- the only place it touches the cipher. */
     const uint64_t mixed = expanded ^ (round_key & DES_SUBKEY_MASK);
