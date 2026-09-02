@@ -21,14 +21,12 @@
 #define DES_SBOX_OUTPUT_BITS 4
 
 /*
- * Aplica una tabla de permutacion del estandar. Ver la nota en
- * des_keyschedule.c sobre por que el helper se repite por modulo.
+ * Aplica una tabla de permutacion del estandar.
  *
  * El estandar numera los bits desde 1 empezando por el MAS significativo, de
  * ahi el desplazamiento (in_bits - table[i]).
  */
-static uint64_t permute(uint64_t input, const uint8_t *table,
-                        unsigned out_bits, unsigned in_bits)
+static uint64_t permute(uint64_t input, const uint8_t *table, unsigned out_bits, unsigned in_bits)
 {
     uint64_t output = 0;
 
@@ -47,17 +45,8 @@ static uint64_t permute(uint64_t input, const uint8_t *table,
  * bits no es arbitrario:
  *
  *   - La FILA (0..3) la eligen el bit mas significativo y el menos
- *     significativo del bloque. Estos son precisamente los bits que la
- *     expansion E tomo prestados de los grupos vecinos, es decir, los bits
- *     compartidos con las S-boxes de al lado. Al usarlos para la fila, un solo
- *     bit de entrada altera la salida de dos cajas distintas, lo que acelera
- *     el efecto avalancha.
- *   - La COLUMNA (0..15) la eligen los 4 bits centrales, que son los bits
- *     "propios" de este grupo.
- *
- * Cada fila de una S-box es ademas una permutacion completa de 0..15, asi que
- * fijada la fila la caja sigue siendo biyectiva; la no linealidad proviene de
- * que filas distintas dan permutaciones distintas.
+ *     significativo del bloque.
+ *   - La COLUMNA (0..15) la eligen los 4 bits centrales del bloque.
  */
 static uint32_t substitute(uint64_t expanded)
 {
@@ -84,8 +73,7 @@ static uint32_t substitute(uint64_t expanded)
 uint32_t des_feistel_f(uint32_t half_block, uint64_t round_key)
 {
     /* 1. Expansion E: 32 -> 48 bits, duplicando los bits de los bordes. */
-    const uint64_t expanded = permute((uint64_t)half_block, DES_E,
-                                      DES_SUBKEY_BITS, DES_HALF_BLOCK_BITS);
+    const uint64_t expanded = permute((uint64_t)half_block, DES_E, DES_SUBKEY_BITS, DES_HALF_BLOCK_BITS);
 
     /* 2. Unico punto en el que la clave entra en el cifrado. El XOR es
      *    trivialmente invertible, por eso la seguridad depende del paso 3. */
@@ -97,6 +85,5 @@ uint32_t des_feistel_f(uint32_t half_block, uint64_t round_key)
     /* 4. Permutacion P: dispersa la salida de cada caja hacia cajas distintas
      *    en la ronda siguiente. Sin este paso la difusion no saldria de los
      *    cuatro bits producidos por cada S-box. */
-    return (uint32_t)permute((uint64_t)substituted, DES_P,
-                             DES_HALF_BLOCK_BITS, DES_HALF_BLOCK_BITS);
+    return (uint32_t)permute((uint64_t)substituted, DES_P, DES_HALF_BLOCK_BITS, DES_HALF_BLOCK_BITS);
 }

@@ -27,11 +27,11 @@ extern "C" {
  * las dimensiones de las tablas, no el comportamiento de ningun modulo. */
 #define DES_ROUNDS            16  /* Rondas de Feistel.                       */
 #define DES_BLOCK_BITS        64  /* Tamano de bloque.                        */
-#define DES_KEY_BITS          64  /* Clave tal como la entrega el usuario.    */
-#define DES_KEY_BITS_EFFECTIVE 56 /* Clave real: PC-1 descarta 8 bits paridad.*/
+#define DES_KEY_BITS          64  /* Clave original                           */
+#define DES_KEY_BITS_EFFECTIVE 56 /* Clave real sin los 8 bits paridad.       */
 #define DES_HALF_BLOCK_BITS   32  /* Mitades L y R.                           */
 #define DES_SUBKEY_BITS       48  /* Subclave por ronda y salida de E.        */
-#define DES_KEY_HALF_BITS     28  /* Registros C y D del key schedule.        */
+#define DES_KEY_HALF_BITS     28  /* Mitades C y D del key schedule (left shift)        */
 
 #define DES_SBOX_COUNT         8  /* S1..S8.                                  */
 #define DES_SBOX_ROWS          4  /* Seleccionadas por los bits externos.     */

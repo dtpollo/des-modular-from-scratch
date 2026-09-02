@@ -12,7 +12,6 @@
 
 /* --------------------------------------------------------------------------
  * Permutacion inicial (IP), tabla 1 de FIPS 46-3.
- * El bloque de 64 bits se reordena antes de la primera ronda.
  * -------------------------------------------------------------------------- */
 const uint8_t DES_IP[DES_BLOCK_BITS] = {
     58, 50, 42, 34, 26, 18, 10,  2,
@@ -26,8 +25,7 @@ const uint8_t DES_IP[DES_BLOCK_BITS] = {
 };
 
 /* --------------------------------------------------------------------------
- * Permutacion final (IP^-1). Inversa exacta de DES_IP: aplicar ambas en
- * sucesion devuelve el bloque original.
+ * Permutacion final (IP^-1). Inversa exacta de DES_IP
  * -------------------------------------------------------------------------- */
 const uint8_t DES_IP_INV[DES_BLOCK_BITS] = {
     40,  8, 48, 16, 56, 24, 64, 32,
@@ -42,10 +40,6 @@ const uint8_t DES_IP_INV[DES_BLOCK_BITS] = {
 
 /* --------------------------------------------------------------------------
  * Expansion E: 32 -> 48 bits.
- * Cada fila toma 6 bits de la mitad derecha, pero solo 4 son "nuevos": el
- * primero y el ultimo se toman prestados de los grupos vecinos. Ese solape es
- * lo que hace que un mismo bit de entrada afecte a dos S-boxes distintas y,
- * ronda tras ronda, a todo el bloque.
  * -------------------------------------------------------------------------- */
 const uint8_t DES_E[DES_SUBKEY_BITS] = {
     32,  1,  2,  3,  4,  5,
@@ -60,9 +54,6 @@ const uint8_t DES_E[DES_SUBKEY_BITS] = {
 
 /* --------------------------------------------------------------------------
  * Permutacion P: 32 -> 32 bits, aplicada a la salida de las S-boxes.
- * Disenada para que los 4 bits producidos por una S-box terminen alimentando
- * a S-boxes diferentes en la ronda siguiente: sin ella la difusion quedaria
- * confinada dentro de cada caja.
  * -------------------------------------------------------------------------- */
 const uint8_t DES_P[DES_HALF_BLOCK_BITS] = {
     16,  7, 20, 21,
@@ -77,9 +68,8 @@ const uint8_t DES_P[DES_HALF_BLOCK_BITS] = {
 
 /* --------------------------------------------------------------------------
  * PC-1: 64 -> 56 bits.
- * Observese que ningun multiplo de 8 aparece en la tabla: esos son los bits de
- * paridad, que el estandar descarta. Las primeras 28 entradas forman C0 y las
- * ultimas 28 forman D0.
+ * Ningun multiplo de 8 aparece en la tabla (bits de paridad).
+ * Las primeras 28 entradas forman C0 y las ultimas 28 forman D0.
  * -------------------------------------------------------------------------- */
 const uint8_t DES_PC1[DES_KEY_BITS_EFFECTIVE] = {
     /* C0 */
@@ -97,8 +87,6 @@ const uint8_t DES_PC1[DES_KEY_BITS_EFFECTIVE] = {
 /* --------------------------------------------------------------------------
  * PC-2: 56 -> 48 bits.
  * Comprime C_i || D_i descartando 8 bits (9, 18, 22, 25, 35, 38, 43 y 54).
- * Como C y D se rotan antes de cada compresion, cada ronda usa un subconjunto
- * distinto de la clave.
  * -------------------------------------------------------------------------- */
 const uint8_t DES_PC2[DES_SUBKEY_BITS] = {
     14, 17, 11, 24,  1,  5,

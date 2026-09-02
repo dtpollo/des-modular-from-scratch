@@ -37,8 +37,7 @@
  *           los bits desde el MAS significativo: el bit numero n esta en el
  *           desplazamiento (in_bits - n).
  */
-static uint64_t permute(uint64_t input, const uint8_t *table,
-                        unsigned out_bits, unsigned in_bits)
+static uint64_t permute(uint64_t input, const uint8_t *table, unsigned out_bits, unsigned in_bits)
 {
     uint64_t output = 0;
 
@@ -59,20 +58,23 @@ static uint64_t permute(uint64_t input, const uint8_t *table,
  */
 static uint32_t rotate_left_28(uint32_t half, unsigned amount)
 {
+    /* Convierte todos los bits a 1 desde la posicion marcada con 1:
+     * 0001 0000 0000 0000 0000 0000 0000 0000 
+     * 0000 1111 1111 1111 1111 1111 1111 1111 */
     const uint32_t mask = (UINT32_C(1) << DES_KEY_HALF_BITS) - 1;
 
-    /* `amount` siempre vale 1 o 2 (ver DES_SHIFTS), nunca 0 ni 28, por lo que
-     * el desplazamiento derecho complementario no cae en comportamiento
-     * indefinido. */
+    /* `amount` siempre vale 1 o 2 (ver DES_SHIFTS)*/
     return ((half << amount) | (half >> (DES_KEY_HALF_BITS - amount))) & mask;
 }
 
 void des_generate_round_keys(uint64_t key, uint64_t round_keys[static DES_ROUNDS])
 {
-    /* PC-1 reduce la clave a los 56 bits que realmente aportan entropia. */
-    const uint64_t permuted_key = permute(key, DES_PC1,
-                                          DES_KEY_BITS_EFFECTIVE, DES_KEY_BITS);
+    /* PC-1 reduce la clave a los 56 bits */
+    const uint64_t permuted_key = permute(key, DES_PC1, DES_KEY_BITS_EFFECTIVE, DES_KEY_BITS);
 
+    /* Convierte todos los bits a 1 desde la posicion marcada con 1:
+     * 0001 0000 0000 0000 0000 0000 0000 0000 
+     * 0000 1111 1111 1111 1111 1111 1111 1111 */
     const uint32_t half_mask = (UINT32_C(1) << DES_KEY_HALF_BITS) - 1;
 
     /* Los 56 bits se parten en dos registros de 28 que se rotan por separado.
@@ -81,8 +83,7 @@ void des_generate_round_keys(uint64_t key, uint64_t round_keys[static DES_ROUNDS
     uint32_t d = (uint32_t)(permuted_key & half_mask);
 
     for (unsigned round = 0; round < DES_ROUNDS; ++round) {
-        /* Las rotaciones son acumulativas: cada ronda parte del estado de la
-         * anterior, no de C0/D0. Por eso el total rota 28 posiciones. */
+        /* Las rotaciones son acumulativas, por eso en total rota 28 posiciones. */
         c = rotate_left_28(c, DES_SHIFTS[round]);
         d = rotate_left_28(d, DES_SHIFTS[round]);
 
@@ -90,7 +91,6 @@ void des_generate_round_keys(uint64_t key, uint64_t round_keys[static DES_ROUNDS
          * valor de 56 bits, que es la numeracion que asume la tabla. */
         const uint64_t combined = ((uint64_t)c << DES_KEY_HALF_BITS) | (uint64_t)d;
 
-        round_keys[round] = permute(combined, DES_PC2,
-                                    DES_SUBKEY_BITS, DES_KEY_BITS_EFFECTIVE);
+        round_keys[round] = permute(combined, DES_PC2, DES_SUBKEY_BITS, DES_KEY_BITS_EFFECTIVE);
     }
 }

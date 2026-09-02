@@ -29,22 +29,17 @@
 /* Mascara de 32 bits usada para extraer la mitad derecha del bloque. */
 #define DES_HALF_MASK UINT64_C(0xFFFFFFFF)
 
-/* Direccion en la que se recorren las subclaves. Un enum explicito resulta
- * mas legible en las llamadas que un `bool reverse` sin nombre. */
+/* Direccion en la que se recorren las subclaves. */
 typedef enum {
     DES_KEY_ORDER_FORWARD = 0, /* K1..K16: cifrado.    */
     DES_KEY_ORDER_REVERSE = 1  /* K16..K1: descifrado. */
 } des_key_order_t;
 
 /*
- * Aplica una tabla de permutacion del estandar. Ver la nota en
- * des_keyschedule.c sobre por que el helper se repite por modulo.
- *
  * El estandar numera los bits desde 1 empezando por el MAS significativo, de
  * ahi el desplazamiento (in_bits - table[i]).
  */
-static uint64_t permute(uint64_t input, const uint8_t *table,
-                        unsigned out_bits, unsigned in_bits)
+static uint64_t permute(uint64_t input, const uint8_t *table, unsigned out_bits, unsigned in_bits)
 {
     uint64_t output = 0;
 
@@ -81,9 +76,7 @@ static void secure_zero(void *buffer, size_t length)
  * round_keys  Las 16 subclaves ya derivadas.
  * order       Sentido en el que se aplican.
  */
-static uint64_t des_process_block(uint64_t block,
-                                  const uint64_t round_keys[static DES_ROUNDS],
-                                  des_key_order_t order)
+static uint64_t des_process_block(uint64_t block, const uint64_t round_keys[static DES_ROUNDS], des_key_order_t order)
 {
     /* Permutacion inicial. Historicamente servia para simplificar el cableado
      * de los buses de 8 bits del hardware original; criptograficamente es
@@ -108,8 +101,7 @@ static uint64_t des_process_block(uint64_t block,
     /* Intercambio final: el preoutput se forma como R16 || L16, no L16 || R16.
      * Este "swap" es lo que hace que la red sea simetrica y que descifrar sea
      * el mismo procedimiento con las subclaves invertidas. */
-    const uint64_t preoutput = ((uint64_t)right << DES_HALF_BLOCK_BITS)
-                             | (uint64_t)left;
+    const uint64_t preoutput = ((uint64_t)right << DES_HALF_BLOCK_BITS) | (uint64_t)left;
 
     return permute(preoutput, DES_IP_INV, DES_BLOCK_BITS, DES_BLOCK_BITS);
 }
