@@ -1,10 +1,14 @@
 /*
- * Demo: encrypt and decrypt a text string.
+ * Demo of the raw block primitive: encrypt and decrypt a text string one
+ * 64-bit block at a time, packing and unpacking the bytes by hand.
  *
  * Usage: des_demo ["some text"]
  *
- * Loops over 8-byte blocks and encrypts each one independently -- that's
- * ECB, fine for a demo, not something to use for real multi-block data.
+ * This deliberately stays on des.h so the packing is visible. Encrypting
+ * each block independently in a loop is ECB, which leaks the repetition
+ * structure of the plaintext, so real callers should use des_modes.h
+ * instead: it provides ECB and CBC with PKCS#7 padding over a whole
+ * message. See experiments/modes_experiments.c for that comparison.
  */
 
 #include <inttypes.h>
@@ -90,7 +94,7 @@ int main(int argc, char *argv[])
     }
 
     printf("\nText recovered exactly. DES is broken today (56-bit effective\n"
-           "key) -- educational use only.\n");
+           "key), so this is for educational use only.\n");
 
     return 0;
 }

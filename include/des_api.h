@@ -30,7 +30,9 @@ extern "C" {
 
 typedef enum {
     DES_OK = 0,
-    DES_ERR_INVALID_LENGTH = -1
+    DES_ERR_INVALID_LENGTH   = -1,
+    DES_ERR_INVALID_PADDING  = -2, /* modes layer only, see des_modes.h */
+    DES_ERR_BUFFER_TOO_SMALL = -3  /* modes layer only: the calls below write exactly 8 bytes */
 } des_status_t;
 
 /* Encrypts exactly 8 bytes of plaintext with an 8-byte key.

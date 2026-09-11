@@ -5,7 +5,10 @@
  * the k1/k16 round keys, a round-trip check, the avalanche effect (one
  * plaintext bit and one key bit), rejection of wrong-length input, and a
  * dedicated check that the bit-numbering convention (bit 1 = MSB) is
- * actually being used. No external test framework -- just a tiny counter.
+ * actually being used. The modes layer adds PKCS#7 padding round trips and
+ * invalid padding, ECB and CBC round trips, the IV's effect, and the
+ * repeated-block contrast between the two modes.
+ * No external test framework -- just a tiny counter.
  */
 
 #include <inttypes.h>
@@ -19,6 +22,7 @@
 #include "des_api.h"
 #include "des_feistel.h"
 #include "des_keyschedule.h"
+#include "des_modes.h"
 #include "des_tables.h"
 
 static unsigned g_checks_run;
@@ -415,6 +419,275 @@ static void test_avalanche_key(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Modes layer: PKCS#7 padding, ECB, CBC                               */
+/* ------------------------------------------------------------------ */
+
+/* Empty, short, exactly one block, and several blocks. */
+static const char *const k_messages[] = {
+    "", "A", "1234567", "12345678", "123456789", "Hola, DES desde C!"
+};
+
+#define MESSAGE_COUNT (sizeof k_messages / sizeof k_messages[0])
+
+static const uint8_t k_key[DES_KEY_BYTES] = {
+    0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1
+};
+static const uint8_t k_iv[DES_IV_BYTES] = {
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88
+};
+static const uint8_t k_fips_plain[DES_BLOCK_BYTES] = {
+    0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF
+};
+static const uint8_t k_fips_cipher[DES_BLOCK_BYTES] = {
+    0x85, 0xE8, 0x13, 0x54, 0x0F, 0x0A, 0xB4, 0x05
+};
+
+static void test_padding(void)
+{
+    puts("PKCS#7 padding");
+
+    int lengths_ok = 1;
+    int round_trip_ok = 1;
+
+    for (size_t i = 0; i < MESSAGE_COUNT; ++i) {
+        const uint8_t *data  = (const uint8_t *)k_messages[i];
+        const size_t data_len = strlen(k_messages[i]);
+
+        uint8_t padded[64];
+        size_t padded_len = 0;
+        size_t unpadded_len = 0;
+
+        if (des_pkcs7_pad(data, data_len, padded, sizeof padded, &padded_len) != DES_OK
+            || padded_len != des_padded_len(data_len)
+            || padded_len <= data_len
+            || (padded_len % DES_BLOCK_BYTES) != 0) {
+            lengths_ok = 0;
+            break;
+        }
+
+        if (des_pkcs7_unpad(padded, padded_len, &unpadded_len) != DES_OK
+            || unpadded_len != data_len
+            || memcmp(padded, data, data_len) != 0) {
+            round_trip_ok = 0;
+            break;
+        }
+    }
+
+    expect_true("pad fills whole blocks and always adds at least one byte", lengths_ok);
+    expect_true("unpad(pad(M)) == M for messages of several lengths", round_trip_ok);
+
+    uint8_t aligned[2 * DES_BLOCK_BYTES];
+    size_t aligned_len = 0;
+    expect_true("a block-aligned message gains a full padding block",
+                des_pkcs7_pad((const uint8_t *)"12345678", DES_BLOCK_BYTES,
+                              aligned, sizeof aligned, &aligned_len) == DES_OK
+                && aligned_len == 2 * DES_BLOCK_BYTES
+                && aligned[8] == 8 && aligned[15] == 8);
+
+    uint8_t bad[DES_BLOCK_BYTES];
+    size_t out_len = 0;
+
+    memset(bad, 8, sizeof bad);
+    bad[DES_BLOCK_BYTES - 1] = 0;
+    expect_true("unpad rejects a zero pad byte",
+                des_pkcs7_unpad(bad, sizeof bad, &out_len) == DES_ERR_INVALID_PADDING);
+
+    memset(bad, 9, sizeof bad);
+    expect_true("unpad rejects a pad byte above the block size",
+                des_pkcs7_unpad(bad, sizeof bad, &out_len) == DES_ERR_INVALID_PADDING);
+
+    memset(bad, 0, sizeof bad);
+    bad[DES_BLOCK_BYTES - 1] = 3;
+    bad[DES_BLOCK_BYTES - 2] = 3; /* the run claims 3 bytes but the third is 0 */
+    expect_true("unpad rejects an inconsistent padding run",
+                des_pkcs7_unpad(bad, sizeof bad, &out_len) == DES_ERR_INVALID_PADDING);
+
+    expect_true("unpad rejects a length that isn't a multiple of 8",
+                des_pkcs7_unpad(bad, 7, &out_len) == DES_ERR_INVALID_LENGTH);
+    expect_true("unpad rejects an empty buffer",
+                des_pkcs7_unpad(bad, 0, &out_len) == DES_ERR_INVALID_LENGTH);
+
+    uint8_t tiny[4];
+    expect_true("pad rejects an output buffer that is too small",
+                des_pkcs7_pad((const uint8_t *)"AB", 2, tiny, sizeof tiny, &out_len)
+                    == DES_ERR_BUFFER_TOO_SMALL);
+
+    putchar('\n');
+}
+
+static void test_ecb(void)
+{
+    puts("ECB mode");
+
+    uint8_t cipher[64];
+    uint8_t recovered[64];
+    size_t cipher_len = 0;
+    size_t recovered_len = 0;
+
+    expect_true("des_ecb_encrypt succeeds on valid input",
+                des_ecb_encrypt(k_key, DES_KEY_BYTES, k_fips_plain, DES_BLOCK_BYTES,
+                                cipher, sizeof cipher, &cipher_len) == DES_OK);
+    expect_true("a block-aligned plaintext yields one extra ciphertext block",
+                cipher_len == 2 * DES_BLOCK_BYTES);
+    expect_true("the first ECB block matches the known FIPS vector",
+                memcmp(cipher, k_fips_cipher, DES_BLOCK_BYTES) == 0);
+
+    expect_true("des_ecb_decrypt succeeds on valid input",
+                des_ecb_decrypt(k_key, DES_KEY_BYTES, cipher, cipher_len,
+                                recovered, sizeof recovered, &recovered_len) == DES_OK);
+    expect_true("ECB decrypt strips the padding and recovers the plaintext",
+                recovered_len == DES_BLOCK_BYTES
+                && memcmp(recovered, k_fips_plain, DES_BLOCK_BYTES) == 0);
+
+    int round_trip_ok = 1;
+    for (size_t i = 0; i < MESSAGE_COUNT; ++i) {
+        const uint8_t *data  = (const uint8_t *)k_messages[i];
+        const size_t data_len = strlen(k_messages[i]);
+
+        if (des_ecb_encrypt(k_key, DES_KEY_BYTES, data, data_len,
+                            cipher, sizeof cipher, &cipher_len) != DES_OK
+            || des_ecb_decrypt(k_key, DES_KEY_BYTES, cipher, cipher_len,
+                               recovered, sizeof recovered, &recovered_len) != DES_OK
+            || recovered_len != data_len
+            || memcmp(recovered, data, data_len) != 0) {
+            round_trip_ok = 0;
+            break;
+        }
+    }
+    expect_true("D_ECB(E_ECB(M)) == M for messages of several lengths", round_trip_ok);
+
+    expect_true("des_ecb_encrypt rejects a 7-byte key",
+                des_ecb_encrypt(k_key, 7, k_fips_plain, DES_BLOCK_BYTES,
+                                cipher, sizeof cipher, &cipher_len) == DES_ERR_INVALID_LENGTH);
+    expect_true("des_ecb_decrypt rejects a ciphertext that isn't a multiple of 8",
+                des_ecb_decrypt(k_key, DES_KEY_BYTES, cipher, 15,
+                                recovered, sizeof recovered, &recovered_len)
+                    == DES_ERR_INVALID_LENGTH);
+
+    uint8_t tiny[DES_BLOCK_BYTES];
+    expect_true("des_ecb_encrypt rejects an output buffer that is too small",
+                des_ecb_encrypt(k_key, DES_KEY_BYTES, k_fips_plain, DES_BLOCK_BYTES,
+                                tiny, sizeof tiny, &cipher_len) == DES_ERR_BUFFER_TOO_SMALL);
+
+    putchar('\n');
+}
+
+static void test_cbc(void)
+{
+    puts("CBC mode");
+
+    uint8_t cipher[64];
+    uint8_t recovered[64];
+    size_t cipher_len = 0;
+    size_t recovered_len = 0;
+
+    /* P_1 XOR IV is the FIPS plaintext, so C_1 must be the FIPS ciphertext.
+     * An all-zero IV would pass even if the XOR were missing; this won't. */
+    uint8_t first_block[DES_BLOCK_BYTES];
+    for (size_t i = 0; i < DES_BLOCK_BYTES; ++i) {
+        first_block[i] = (uint8_t)(k_fips_plain[i] ^ k_iv[i]);
+    }
+
+    expect_true("des_cbc_encrypt succeeds on valid input",
+                des_cbc_encrypt(k_key, DES_KEY_BYTES, k_iv, DES_IV_BYTES,
+                                first_block, DES_BLOCK_BYTES,
+                                cipher, sizeof cipher, &cipher_len) == DES_OK);
+    expect_true("C_1 == E_K(P_1 XOR IV), checked against the FIPS vector",
+                memcmp(cipher, k_fips_cipher, DES_BLOCK_BYTES) == 0);
+
+    int round_trip_ok = 1;
+    for (size_t i = 0; i < MESSAGE_COUNT; ++i) {
+        const uint8_t *data  = (const uint8_t *)k_messages[i];
+        const size_t data_len = strlen(k_messages[i]);
+
+        if (des_cbc_encrypt(k_key, DES_KEY_BYTES, k_iv, DES_IV_BYTES, data, data_len,
+                            cipher, sizeof cipher, &cipher_len) != DES_OK
+            || des_cbc_decrypt(k_key, DES_KEY_BYTES, k_iv, DES_IV_BYTES, cipher, cipher_len,
+                               recovered, sizeof recovered, &recovered_len) != DES_OK
+            || recovered_len != data_len
+            || memcmp(recovered, data, data_len) != 0) {
+            round_trip_ok = 0;
+            break;
+        }
+    }
+    expect_true("D_CBC(E_CBC(M, IV), IV) == M for messages of several lengths", round_trip_ok);
+
+    const uint8_t other_iv[DES_IV_BYTES] = {
+        0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x01, 0x02
+    };
+    const uint8_t *message  = (const uint8_t *)k_messages[MESSAGE_COUNT - 1];
+    const size_t message_len = strlen(k_messages[MESSAGE_COUNT - 1]);
+
+    uint8_t cipher_a[64];
+    uint8_t cipher_b[64];
+    size_t len_a = 0;
+    size_t len_b = 0;
+
+    expect_true("the same message encrypts under both IVs",
+                des_cbc_encrypt(k_key, DES_KEY_BYTES, k_iv, DES_IV_BYTES, message, message_len,
+                                cipher_a, sizeof cipher_a, &len_a) == DES_OK
+                && des_cbc_encrypt(k_key, DES_KEY_BYTES, other_iv, DES_IV_BYTES,
+                                   message, message_len,
+                                   cipher_b, sizeof cipher_b, &len_b) == DES_OK);
+    expect_true("two different IVs produce different ciphertexts",
+                len_a == len_b && memcmp(cipher_a, cipher_b, len_a) != 0);
+
+    expect_true("CBC decrypt with the matching IV recovers the plaintext",
+                des_cbc_decrypt(k_key, DES_KEY_BYTES, k_iv, DES_IV_BYTES, cipher_a, len_a,
+                                recovered, sizeof recovered, &recovered_len) == DES_OK
+                && recovered_len == message_len
+                && memcmp(recovered, message, message_len) == 0);
+
+    expect_true("des_cbc_encrypt rejects a 7-byte IV",
+                des_cbc_encrypt(k_key, DES_KEY_BYTES, k_iv, 7, message, message_len,
+                                cipher, sizeof cipher, &cipher_len) == DES_ERR_INVALID_LENGTH);
+    expect_true("des_cbc_decrypt rejects a 9-byte IV",
+                des_cbc_decrypt(k_key, DES_KEY_BYTES, k_iv, 9, cipher_a, len_a,
+                                recovered, sizeof recovered, &recovered_len)
+                    == DES_ERR_INVALID_LENGTH);
+
+    putchar('\n');
+}
+
+static void test_repeated_blocks(void)
+{
+    puts("Repeated plaintext blocks (ECB leaks them, CBC does not)");
+
+    const char *const repeated = "ABCDEFGHABCDEFGHABCDEFGHABCDEFGH"; /* 4 identical blocks */
+    const size_t repeated_len  = strlen(repeated);
+
+    uint8_t ecb[64];
+    uint8_t cbc[64];
+    size_t ecb_len = 0;
+    size_t cbc_len = 0;
+
+    expect_true("both modes encrypt the repeated message",
+                des_ecb_encrypt(k_key, DES_KEY_BYTES, (const uint8_t *)repeated, repeated_len,
+                                ecb, sizeof ecb, &ecb_len) == DES_OK
+                && des_cbc_encrypt(k_key, DES_KEY_BYTES, k_iv, DES_IV_BYTES,
+                                   (const uint8_t *)repeated, repeated_len,
+                                   cbc, sizeof cbc, &cbc_len) == DES_OK);
+
+    int ecb_all_equal = 1;
+    int cbc_any_equal = 0;
+
+    for (size_t offset = DES_BLOCK_BYTES; offset < repeated_len; offset += DES_BLOCK_BYTES) {
+        if (memcmp(ecb, &ecb[offset], DES_BLOCK_BYTES) != 0) {
+            ecb_all_equal = 0;
+        }
+        if (memcmp(cbc, &cbc[offset], DES_BLOCK_BYTES) == 0) {
+            cbc_any_equal = 1;
+        }
+    }
+
+    expect_true("ECB maps the 4 identical plaintext blocks to identical ciphertext blocks",
+                ecb_all_equal);
+    expect_true("CBC produces 4 distinct ciphertext blocks instead", !cbc_any_equal);
+
+    putchar('\n');
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(void)
 {
@@ -431,6 +704,10 @@ int main(void)
     test_round_trip();
     test_avalanche_plaintext();
     test_avalanche_key();
+    test_padding();
+    test_ecb();
+    test_cbc();
+    test_repeated_blocks();
 
     printf("Result: %u/%u checks passed\n",
            g_checks_run - g_checks_failed, g_checks_run);
